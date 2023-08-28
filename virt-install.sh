@@ -8,6 +8,7 @@ fi
 HELP=`cat<<-EOF
 
 Parameters for $0 script:
+    -d | --distro:      distro rocky or centos.
     -h | --hostname:    hostname of new VM. Required.
     -m | --mac:         mac address for new VM. Optional.
     -n | --network:     Libvirt network name. One of: $(virsh net-list --name | xargs)
@@ -21,6 +22,8 @@ DRY_RUN=1
 
 while [ 0 -lt $# ]; do
     case $1 in
+        -d|--distro) shift
+            DISTRO=$1; shift;;
         -h|--hostname ) shift
             HOST_NAME=$1; shift;;
         -m|--mac ) shift
@@ -30,7 +33,7 @@ while [ 0 -lt $# ]; do
         -r|--run ) shift
             DRY_RUN=0;;
         -v|--version ) shift
-            CENTOS_VERSION=$1; shift;;
+            VERSION=$1; shift;;
         * )
             echo "${HELP}"; exit 1;;
     esac
@@ -52,13 +55,14 @@ if [[ -z "${MAC}" && -z "${NETWORK}" ]]; then
     fi
 fi
 
-POOL_NAME="default"
+POOL_NAME="images"
 KS_PATH="./"
-KS_FILE="centos${CENTOS_VERSION:-7}-kickstart.cfg"
+KS_FILE="centos${VERSION:-7}-kickstart.cfg"
 DISK_FORMAT="qcow2"
-case ${CENTOS_VERSION} in
-    8) CENTOS_LOCATION=http://mirror.hetzner.de/centos/${CENTOS_VERSION}/BaseOS/x86_64/os/;;
-    *) CENTOS_LOCATION=http://mirror.hetzner.de/centos/${CENTOS_VERSION}/os/x86_64/;;
+case ${DISTRO} in
+    centos) LOCATION=http://mirror.hetzner.de/centos/${VERSION}/BaseOS/x86_64/os/;;
+    rocky)  LOCATION=https://download.rockylinux.org/pub/rocky/${VERSION}/BaseOS/x86_64/os/;;
+    *) echo "Specify either centos or rocky as distro (-d)"; exit 1;;
 esac
 
 if VOL_INFO=$(virsh vol-info --pool ${POOL_NAME} ${HOST_NAME}.${DISK_FORMAT} 2>/dev/null); then
@@ -99,12 +103,12 @@ cat ${KS_PATH}${KS_FILE} | HOST_NAME=${HOST_NAME} envsubst > ${TMP_KSFILE}
 CMD="virt-install \
         --name ${HOST_NAME} \
         --vcpus 2 \
-        --ram 2048 \
+        --ram 4096 \
         --disk pool=${POOL_NAME},size=20 \
         --metadata title=\"${TITLE}\",description=\"${DESC}\" \
-        --location ${CENTOS_LOCATION} \
+        --location ${LOCATION} \
         --os-type=linux \
-        --os-variant=centos${CENTOS_VERSION:-7} \
+        --os-variant=centos${VERSION:-7} \
         --network network=${NETWORK}${MAC}\
         --initrd-inject=${TMP_KSFILE} \
         --extra-args=\"ks=file:/$(basename ${TMP_KSFILE}) console=ttyS0,115200n8 SERVERNAME=${HOST_NAME} NOTIFYEMAIL=liutauras.adomaitis@infosaitas.lt net.ifnames=0 biosdevname=0\" \
